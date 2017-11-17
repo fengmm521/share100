@@ -1,0 +1,11 @@
+
+*.CSV
+*.csv
+*.pyc
+*.PYC
+*.TXT
+*.txt
+*.inout
+*.tens
+perdat/nnout
+perdat/todaydata
