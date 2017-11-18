@@ -23,6 +23,9 @@ import nntensorflow
 reload(sys)
 sys.setdefaultencoding( "utf-8" )
 
+
+dapandatas = {}
+
 def cur_file_dir():
     #获取脚本路径
     path = sys.path[0]
@@ -72,269 +75,292 @@ def getAllQFQDataID():
         ids.append(d[2])
     return ids
 
+def getListAverage(plist):
+    arrtmp = numpy.array(plist)
+    return numpy.mean(arrtmp)
 
-def deSoftMaxFromLable(lab):
-    pass
+def getListDerivativeForMaxAndMin(plist):
+    maxpoints = []
+    minpoints = []
+    datasize = len(plist)
+    ks = []
+    for n in range(len(plist)):
+        if n - 1 >= 0:
+            tmpk = plist[n] - plist[n - 1]
+            ks.append(tmpk)
+        else:
+            ks.append(0)
 
-
-
-
-def getTureTableIndex(x,y,maxnum):
-    n = (y*(2*maxnum + 1 - y))/2 + x
-    return n
-
-
-def getXYFromTureTable(idx,maxnum):
-
-    dictab = {}
-    for m in range(maxnum + 1):
-        for n in range(maxnum + 1):
-            if m >= n:
-                tmp = getTureTableIndex(m, n, maxnum)
-                dictab[tmp] = {'x':m,'y':n}
-    return dictab[idx]
-
-def softMaxLable(mindown,maxup):
-    #true table
-    tb ='-19,-17,-15,-13,-11,-9,-7,-5,-3,-2,-1,1,2,3,5,7,9,11,13,15,17,19'
-    tb = '-18,-14,-8,-5,-2,-1,1,2,5,8,14,18'
-    truetables = tb.split(',')
-    num = len(truetables)  #12x12=
-
-    alllabnum = getTureTableIndex(num, num, num) + 1
-    labs = [0]*alllabnum
-    # print labs
-    maxIndex = num
-    minIndex = 0
+    for n in range(len(ks)):
+        if n - 1 >= 0:
+            if ks[n - 1] > 0 and ks[n] < 0:
+                maxpoints.append(n)
+            elif ks[n-1] == 0 and n > 2 and ks[n - 2] > 0 and ks[n] < 0:
+                maxpoints.append(n)
+            if ks[n - 1] < 0 and ks[n] > 0:
+                minpoints.append(n)
+            elif ks[n-1] == 0 and n > 2 and ks[n-2] < 0 and ks[n] > 0:
+                minpoints.append(n)
+    return minpoints,maxpoints
 
 
-    miny = min(mindown, maxup)
-    maxx = max(mindown, maxup)
-
-    mindown100 = miny*100
-    maxup100 = maxx*100
-
-    for n in range(num):
-        tmpf = float(truetables[n])
-        if minIndex == 0 and mindown100 < tmpf:
-            minIndex = n
-        if maxIndex == num and maxup100 < tmpf:
-            maxIndex = n 
-    # maxIndex += 1
-    # minIndex += 1
-
-    indx = getTureTableIndex(maxIndex, minIndex, num)
-
-    labs[indx] = 1
-    # print len(labs),alllabnum
-    return labs
-
-def getPerdatLable(onedat,labDayCount = 7):
-    ldats = onedat[1]
-    if not ldats:
-        return None
-    # print ldats
-    maxclose = 0.0
-    minclose = 99999.0
-    for d in ldats:
-        if d[1] > maxclose:
-            maxclose = d[1]
-        if d[2] < minclose:
-            minclose = d[2]
-    lastclose = onedat[0][-1][3]
-    # print lastclose
-    if lastclose <= 0.01:
-        return None
-    maxup = (maxclose - lastclose)/lastclose
-    mindown = (minclose - lastclose)/lastclose
-
-    labdat = softMaxLable(mindown, maxup)
-
-    newperdat = []
-
-    perdat = onedat[0]
-    for d in perdat:
-        tmp0 = (d[0] - lastclose)/(3*lastclose)
-        if tmp0 >= 1.0:
-            tmp0 = 1.0
-        tmp1 = (d[1] - lastclose)/(3*lastclose)
-        if tmp1 >= 1.0:
-            tmp1 = 1.0
-        tmp2 = (d[2] - lastclose)/(3*lastclose)
-        if tmp2 >= 1.0:
-            tmp2 = 1.0
-        tmp3 = (d[3] - lastclose)/(3*lastclose)
-        if tmp3 >= 1.0:
-            tmp3 = 1.0
-        tmpone = [tmp0,tmp1,tmp2,tmp3,d[4]]
-        newperdat.append(tmpone)
-    outdats = []
-    outdats.append(newperdat)
-    outdats.append(labdat)
-    return outdats
-
-
-def saveListToFileWithJson(tpath,dats):
-    savetxt = json.dumps(dats)
-    f = open(tpath,'w')
-    f.write(savetxt)
-    f.close()
-
-def loadListFromFileWithJson(tpth):
-    f = open(tpth,'r')
-    jsontxt = f.read()
-    f.close()
-    outlist = json.loads(jsontxt)
-    return outlist
-
-
-def createTrainMadelWithDatalist(dats,tid):
-    nntensorflow.trainDataWithListData(dats, tid)
-    print '--------------%s----------------'%(tid)
-
-
-def createNNCOuntDayTmpData(tid,pDay,labDayCount,isRunNN = True):
-    f = open('qfqdata/' + tid + '.csv','r')
-    tmpd = f.readlines()[1:]
-    f.close()
-
-    noEnoughpth = 'erro/noEnough.txt'
-    if pDay != 100 or labDayCount != 5:
-        noEnoughpth = 'erro/noEnough_' + str(pDay) + '_' + str(labDayCount) + '.txt'
-
-    if len(tmpd) < 110:
-        print 'data long is not enough 110.tid is:%s'%(tid)
-        if not os.path.exists('erro'):
-            os.mkdir('erro')
-        outstr = str(tid) + ',tmpd:%d\n'%(len(tmpd))
-        f = open(noEnoughpth,'a')
-        f.write(outstr)
-        f.close()
-        return None
-
-    #code,time,open,high,low,close,volume,turn,trate
-    perdata = []   #per data is 100 lines,data from after to now
-    lcount = len(tmpd)
-    for n in range(len(tmpd)):
-        if n+pDay < lcount:
-            onedat = []
-            ppdat = []
-            for ln in range(n,n+pDay):
-                tmpl = tmpd[ln]
-                tmpl = tmpl.replace('\r','')
-                tmpl = tmpl.replace('\n','')
-                ds = tmpl.split(',')
-                ppdat.append([float(ds[2]),float(ds[3]),float(ds[4]),float(ds[5]),float(ds[8])])
-            onedat.append(ppdat)
-            labdat = []
-            if n + pDay + labDayCount < lcount:
-                for ln2 in range(n+pDay,n+pDay+labDayCount):
-                    tmpl2 = tmpd[ln2]
-                    tmpl2 = tmpl2.replace('\r','')
-                    tmpl2 = tmpl2.replace('\n','')
-                    ds2 = tmpl2.split(',')
-                    labdat.append([float(ds2[2]),float(ds2[3]),float(ds2[4]),float(ds2[5]),float(ds2[8])])
-            onedat.append(labdat)
-            perdata.append(onedat)
-    newperdata = []
-    datlong = len(perdata)
-    index = 0
-
-    isLog = True
-
-    for d in perdata:
-
-        if not isLog:
-            f = open('testlog.txt','w')
-            f.write(str(d))
-            f.close()
-            
-        tmpnew = getPerdatLable(d)
-        
-        if not isLog:
-            f = open('testlog2.txt','w')
-            f.write(str(tmpnew))
-            f.close()
-            isLog = True
-
-        if tmpnew:
-            newperdata.append(tmpnew) 
-
-    if len(perdata) < 900:
-        print 'data long is not enough 900.tid is:%s'%(tid)
-        if not os.path.exists('erro'):
-            os.mkdir('erro')
-        outstr = str(tid) + ',perdata:%d\n'%(len(perdata))
-        f = open('erro/noEnough.txt','a')
-        f.write(outstr)
-        f.close()
-        return
-
-    if isRunNN:
-        createTrainMadelWithDatalist(newperdata, tid)
-        return
+def getDataListWithCountAverage(plist,paverage):
+    averalist = []
+    datasize = len(plist)
+    lid = 0
+    hid = 0
+    if paverage%2 == 1:
+        lid = (paverage - 1)/2
+        hid = lid + 1
     else:
-        dirpath = '/media/mage/000FBF7E00093795/linuxfiles/perdata/' + 'tmp' + str(pDay) + '_' + str(labDayCount)
-        # dirpath = 'tmp' + str(pDay) + '_' + str(labDayCount)
-        if not os.path.exists(dirpath):
-            os.mkdir(dirpath)
-        savepath = dirpath + os.sep + tid + '.txt'
-        saveListToFileWithJson(savepath, newperdata)
+        lid = paverage/2
+        hid = lid
+    for n in range(len(plist)):
+        if n - lid >= 0 and n + hid < datasize:
+            averatmp = getListAverage(plist[n - lid:n + hid])
+            averalist.append(averatmp)
+        else:
+            averalist.append(0)
+    return averalist
+
+def getDataListWithCountAverageMinAndMax(plist,paverage):
+    averlist = getDataListWithCountAverage(plist, paverage)
+    minpoints,maxpints = getListDerivativeForMaxAndMin(averlist)
+    return minpoints,maxpints
+
+def getDapanPencent():
+    dapanpth = '../xlsx/000001.dapan'
+    f = open(dapanpth,'r')
+    lines = f.readlines()
+    f.close()
+
+    lines = lines[1:]
+
+    # dapandic = {}
+
+    for l in lines:
+        tmpl = l.replace('\r','')
+        tmpl = tmpl.replace('\n','')
+        tmps = tmpl.split(',')
+        pencenttmp = float(tmps[9])
+        chpencent = (pencenttmp + 10.0)/20.0
+        if chpencent < 0:
+            chpencent = 0.0
+        if chpencent > 1.0:
+            chpencent = 1.0
+        dapandatas[tmps[0]] = [pencenttmp,chpencent,int(tmps[11])]
+
+    
+
+def conventDataForLables(fpth):
+
+    #code,time,openprice,highprice,lowprice,closeprice,value,marketvalue,changerate
+
+    f = open(fpth,'r')
+    lines = f.readlines()
+    f.close()
+
+    onedatas = []
+    prices = []       #price = (open + close)/2;price = (high + low)/2;price = hight,low;price = max(open,close),min(open,close)
 
 
-def createNN100DayTmpData(tid,labDay = 5):
-    return createNNCOuntDayTmpData(tid,100,labDay)
+    lines = lines[1:]
+    for n in range(len(lines)):
+        l = lines[n]
+        tmpl = l.replace('\r','')
+        tmpl = tmpl.replace('\n','')
+        tmps = tmpl.split(',')
+        tid = tmps[0]                   #code id
+        if len(tid) == 8:
+            tid = tid[2:]
+        pdate = tmps[1]                 #date
+        popen = float(tmps[2])          #openprice
+        phigh = float(tmps[3])          #highprice
+        plow  = float(tmps[4])          #lowprice
+        pclose = float(tmps[5])         #closeprice
+        pvalue = int(tmps[6])           #value gu
+        pmarketvalue = int(tmps[7])     #marketvalue yuan
+        pchangerate = float(tmps[8])    #changerate
+        onedatas.append([n,tid,pdate,popen,phigh,plow,pclose,pvalue,pmarketvalue,pchangerate,0,0,0,0,0,0,0,0,0,0,0,0,0,dapandatas[pdate][0],dapandatas[pdate][1],dapandatas[pdate][2]])
+        tmppriceOC = (popen + pclose)/2
+        tmppriceHL = (phigh + plow)/2
+        prices.append([n,tmppriceOC,tmppriceHL,phigh,plow,max(popen,pclose),min(popen,pclose)])
 
+    datasize = len(prices)
 
-def createNN30DayTmpData(tid,labDay = 3):
-    return createNNCOuntDayTmpData(tid,30,3)
+    ocdatas = [x[1] for x in prices]
+    oc5min,oc5max = getDataListWithCountAverageMinAndMax(ocdatas, 5)
+    oc10min,oc10max = getDataListWithCountAverageMinAndMax(ocdatas, 10)
+    oc20min,oc20max = getDataListWithCountAverageMinAndMax(ocdatas, 20)
+    
+    hldatas = [x[2] for x in prices]
+    hl5min,hl5max = getDataListWithCountAverageMinAndMax(hldatas, 5)
+    hl10min,hl10max = getDataListWithCountAverageMinAndMax(hldatas, 10)
+    hl20min,hl20max = getDataListWithCountAverageMinAndMax(hldatas, 20)
 
-def createNN10DayTmpData(tid,labDay = 3):
-    return createNNCOuntDayTmpData(tid,10,3)
+    phdatas = [x[3] for x in prices]
+    _ph5min,ph5max = getDataListWithCountAverageMinAndMax(phdatas, 5)
+    _ph10min,ph10max = getDataListWithCountAverageMinAndMax(phdatas, 10)
+    _ph20min,ph20max = getDataListWithCountAverageMinAndMax(phdatas, 20)
+    pldatas = [x[4] for x in prices]
+    pl5min,_pl5max = getDataListWithCountAverageMinAndMax(pldatas, 5)
+    pl10min,_pl10max = getDataListWithCountAverageMinAndMax(pldatas, 10)
+    pl20min,_pl20max = getDataListWithCountAverageMinAndMax(pldatas, 20)
+
+    ocmaxdatas = [x[5] for x in prices]
+    _ocmax5min,ocmax5max = getDataListWithCountAverageMinAndMax(ocmaxdatas, 5)
+    _ocmax10min,ocmax10max = getDataListWithCountAverageMinAndMax(ocmaxdatas, 10)
+    _ocmax20min,ocmax20max = getDataListWithCountAverageMinAndMax(ocmaxdatas, 20)
+    ocmindatas = [x[6] for x in prices]
+    ocmin5min,_ocmin5max = getDataListWithCountAverageMinAndMax(ocmindatas, 5)
+    ocmin10min,_ocmin10max = getDataListWithCountAverageMinAndMax(ocmindatas, 10)
+    ocmin20min,_ocmin20max = getDataListWithCountAverageMinAndMax(ocmindatas, 20)
+
+    for n in range(len(onedatas)):
+        if n in oc5min:
+            onedatas[n][10] = -1
+        if n in oc5max:
+            onedatas[n][10] = 1
+        if n in oc10min:
+            onedatas[n][11] = -1
+        if n in oc10max:
+            onedatas[n][11] = 1
+        if n in oc20min:
+            onedatas[n][12] = -1
+        if n in oc20max:
+            onedatas[n][12] = 1
+        if n in hl5min:
+            onedatas[n][13] = -1
+        if n in hl5max:
+            onedatas[n][13] = 1
+        if n in hl10min:
+            onedatas[n][14] = -1
+        if n in hl10max:
+            onedatas[n][14] = 1
+        if n in hl20min:
+            onedatas[n][15] = -1
+        if n in hl20max:
+            onedatas[n][15] = 1
+        if n in pl5min:
+            onedatas[n][16] = -1
+        if n in ph5max:
+            onedatas[n][16] = 1
+        if n in pl10min:
+            onedatas[n][17] = -1
+        if n in ph10max:
+            onedatas[n][17] = 1
+        if n in pl20min:
+            onedatas[n][18] = -1
+        if n in ph20max:
+            onedatas[n][18] = 1
+        if n in ocmin5min:
+            onedatas[n][19] = -1
+        if n in ocmax5max:
+            onedatas[n][19] = 1
+        if n in ocmin10min:
+            onedatas[n][20] = -1
+        if n in ocmax10max:
+            onedatas[n][20] = 1
+        if n in ocmin20min:
+            onedatas[n][21] = -1
+        if n in ocmax20max:
+            onedatas[n][21] = 1
+
+    for n in range(len(onedatas)):
+        d = onedatas[n]
+        if d[10] == -1:
+            findid = n
+            mindat = 9999.9
+            for i in range(3):
+                if mindat > min(onedatas[n - i][3],onedatas[n - i][6]):
+                    mindat = min(onedatas[n - i][3],onedatas[n - i][6])
+                    findid = n - i
+            onedatas[findid][22] = -1
+        if d[10] == 1:
+            findid = n
+            maxdat = 0.0
+            for i in range(3):
+                if maxdat < max(onedatas[n - i][3],onedatas[n - i][6]):
+                    maxdat = max(onedatas[n - i][3],onedatas[n - i][6])
+                    findid = n - i
+            onedatas[findid][22] = 1
+
+    return onedatas
+
+def conventListWithCSV(plist):
+    outstr = ''
+    for d in plist:
+        line = ''
+        for x in d:
+            line += str(x) + ','
+        line = line[:-1]
+        outstr += line + '\r\n'
+    return outstr
+
+def create100DayDatasWithLables():
+
+    savedir = 'tmpqfqdata'
+
+    if not os.path.exists(savedir):
+        os.mkdir(savedir)
+
+    getDapanPencent()
+
+    ids = getAllQFQDataID()
+    print len(ids)
+
+    count = 0
+    for i in ids:
+        count += 1
+        tid = i
+        if len(i) == 8:
+            tid = i[2:]
+        tmpfpth = 'qfqdata/' + i + '.csv'
+        tmpsavepth = savedir + os.sep + tid + '.txt'
+
+        if not os.path.exists(tmpsavepth):
+            labdatas = conventDataForLables(tmpfpth)
+            labdatas = conventDataForLables(fpth)
+            # jsonstr = json.dumps(labdatas)
+            outstr = conventListWithCSV(labdatas)
+            f = open(tmpsavepth,'w')
+            f.write(outstr)
+            f.close()
+        else:
+            print '%s is saved..'%(tid)
+        if count%100 == 0:
+            print 'convent count:--------------%d-------------'%(count)
 
 def main():
     
-    noEnoughpth = 'erro/noEnough.txt'
-
-    if os.path.exists(noEnoughpth):
-        os.remove(noEnoughpth)
-
-    ids = getAllQFQDataID()
-    index = 0
-    for t in ids:
-        index += 1
-        print index,t
-        tmpid = t
-        if len(t) == 8:
-            tmpid = t[2:]
-        if os.path.exists('nndata/' + tmpid):
-            continue
-        createNN100DayTmpData(t)
-        # createNN30DayTmpData(t)
-        # createNN10DayTmpData(t)
+    create100DayDatasWithLables()
         
 
 def test():
-    # a = range(100,103)
-    # print a
-    # SoftMaxLable(-5.1,6.3)
-    # # os.mkdir('aaa')
-    # aaa = [0]*10
-    # bbb = []
-    # bbb.append(aaa)
-    # bbb.append([5,5,5,5,5,5,5])
-    # saveListToFileWithJson('aaa.txt', bbb)
-    # rlist = loadListFromFileWithJson('aaa.txt')
-    # print rlist
-    # tid = 'SH'+'601766'
-    tid = 'SZ' + '002341'
-    print tid
-    # getTureTableIndex(0, 0, 12)
-    # print getXYFromTureTable(50, 12)
-    createNN100DayTmpData(tid)
 
+    getDapanPencent()
+
+    savedir = 'tmpqfqdata'
+
+    if not os.path.exists(savedir):
+        os.mkdir(savedir)
+    # avera = getListAverage([1,2,3,4])
+
+    # print avera
+    fpth = 'qfqdata/SZ002802.csv'
+    labdatas = conventDataForLables(fpth)
+    # jsonstr = json.dumps(labdatas)
+    outstr = conventListWithCSV(labdatas)
+    f = open('tmpqfqdata/002802.csv','w')
+    # f.write(jsonstr)
+    f.write(outstr)
+    f.close()
+
+def test2():
+    getDapanPencent()
+    print len(dapandatas.keys())
 
 if __name__ == '__main__':  
-    main()
-    # test()
+    # main()
+    test()
     
